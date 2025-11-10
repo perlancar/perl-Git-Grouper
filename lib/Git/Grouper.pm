@@ -86,7 +86,7 @@ sub _parse_config {
     [200, "OK", $config];
 }
 
-$SPEC{get_repo_group} = {
+$SPEC{git_grouper_group} = {
     v => 1.1,
     summary => 'Group one/more repositories according to rules',
     description => <<'MARKDOWN',
@@ -110,6 +110,13 @@ Given an <pm:IOD> configuration file in *~/.config/git-grouper.conf* like this:
     remotes = ["github_company1", "privbak"]
     username = foo
     email = foo@company1.com
+
+    [group "priv_perl"]
+    repo_name_pattern = /^perl-/
+    has_tags = ["priv"]
+    remotes = ["github", "privbak"]
+    username = perlancar
+    email = perlancar@gmail.com
 
     [group "perl"]
     repo_name_pattern = /^perl-/
@@ -142,8 +149,12 @@ MARKDOWN
         config_file => {
             schema => 'filename*',
         },
-        config_file => {
+        config => {
             schema => 'hash*',
+        },
+        detail => {
+            schema => 'bool*',
+            cmdline_aliases => {l=>{}},
         },
         repo => {
             schema => ['array*' => of=> 'str*'],
@@ -152,7 +163,7 @@ MARKDOWN
         },
     },
     args_rels => {
-        req_one => [qw/config_file config/],
+        choose_one => [qw/config_file config/],
     },
 };
 sub git_grouper_group {
@@ -202,7 +213,7 @@ sub git_grouper_group {
     }
 
     #my $envres = envresmulti();
-    my @groups;
+    my @res;
   REPO:
     for my $repo (@repos) {
         local $CWD = $repo;
@@ -216,25 +227,43 @@ sub git_grouper_group {
 
         my $matching_group;
         FIND_GROUP: {
+            GROUP:
               for my $group (@{ $config->{groups} }) {
-                  #log_trace "Matching repo %s with group %s ...", $repo_name, $group->{group};
+                  log_trace "Matching repo %s with group %s ...", $repo_name, $group->{group};
                   if ($group->{repo_name_pattern}) {
-                      if ($repo_name =~ $group->{repo_name_pattern}) {
-                          $matching_group = $group;
-                          last FIND_GROUP;
+                      if ($repo_name !~ $group->{repo_name_pattern}) {
+                          log_trace "  Skipped group %s (repo %s does not match repo_name_pattern pattern %s)", $group->{group}, $repo_name, $group->{repo_name_pattern};
+                          next GROUP;
                       }
                   }
+                  if ($group->{has_tags}) {
+                      my @tags = map { my $val = $_; $val =~ s/^\.tag-//; $val } glob(".tag-*");
+                      log_trace "Repo's tags: %s", \@tags;
+                      for my $has_tag (@{ $group->{has_tags} }) {
+                          if (!(grep { $_ eq $has_tag } @tags)) {
+                              log_trace "  Skipped group %s (repo %s does not have tag %s)", $group->{group}, $repo_name, $has_tag;
+                              next GROUP;
+                          }
+                      }
+                  }
+                  $matching_group = $group;
+                  last;
               }
           } # FIND_GROUP
         if ($matching_group) {
-            push @groups, $matching_group;
+            push @res, $matching_group;
         } else {
             #$envres->add_result(404, "Can't find group for repo $repo_name", {item_id=>$repo});
             return [404, "Can't find group for repo name $repo_name"];
         }
     } # REPO
     #$envres->as_struct;
-    [200, "OK", $multi ? \@groups : $groups[0]];
+
+    unless ($args{detail}) {
+        @res = map { $_->{group} } @res;
+    }
+
+    [200, "OK", $multi ? \@res : $res[0]];
 }
 
 1;
