@@ -1,0 +1,206 @@
+#!perl
+
+use 5.010001;
+use strict;
+use warnings;
+
+use Perinci::CmdLine::Any;
+
+# AUTHORITY
+# DATE
+# DIST
+# VERSION
+
+Perinci::CmdLine::Any->new(
+    url => '/Git/Grouper/',
+    subcommands => {
+        ls => { url => '/Git/Grouper/ls' },
+    },
+    read_env => 0,
+    read_config => 0,
+    log => 1,
+)->run;
+
+1;
+# ABSTRACT:
+# PODNAME:
+
+=head1 SYNOPSIS
+
+=head2 Listing groups and repositories
+
+List all defined groups:
+
+ % git-grouper ls-groups      ; # just list the names
+ % git-grouper ls-groups -l   ; # list names & summaries
+
+Check which group(s) do repositories belong to:
+
+ % git-grouper get-groups REPO1 REPO2 ...
+
+List repositories that belong to specified group(s):
+
+ % git-grouper include-group GROUP REPO1 REPO2 ...
+ % git-grouper include-group 'GROUP1&GROUP2' REPO1 REPO2 ... ; # repos must belong to all of specified groups
+ % git-grouper include-group 'GROUP1|GROUP2' REPO1 REPO2 ... ; # repos must belong to any of specified groups
+
+List repositories that do not belong to specified group(s):
+
+ % git-grouper exclude-group GROUP REPO1 REPO2 ...
+ % git-grouper exclude-group 'GROUP1&GROUP2' REPO1 REPO2 ... ; # repos must not belong to any of specified groups
+ % git-grouper exclude-group 'GROUP1|GROUP2' REPO1 REPO2 ... ; # repos must not belong to just one of specified groups
+
+List repositories that do not belong to any group:
+
+ % git-grouper include-orphan REPO1 REPO2 ...
+
+List repositories that belong to a group or more:
+
+ % git-grouper exclude-orphan REPO1 REPO2 ...
+
+List repositories that belong to multiple (instead of a single) group:
+
+ % git-grouper include-multiple REPO1 REPO2 ...
+
+List repositories that belong to just one (instead of multiple) group:
+
+ % git-grouper exclude-multiple REPO1 REPO2 ...
+
+=head2 Listing remotes
+
+=head2 Configuring repositories based on group's attributes
+
+ % git-grouper configure-repo REPO1 REPO2 ...
+
+
+=head1 DESCRIPTION
+
+B<git-grouper> is a tool to categorize your git repository into one of
+predefined groups. Later, you can: 1) set your repository's remotes, username,
+email, etc based on the group's attributes; 2) perform actions on a group of
+repositories.
+
+Why group git repositories? To perform actions on a set of git repositories in
+one go. Also, another reason is to set remotes or username/email based on a
+group's characteristics instead of individually. One case where this can be
+useful is when restoring repositories from backup via cloning. You might want to
+clone from local backup instead of from origin, but when cloning git will set
+origin of your restored repository to your backup. With git-grouper, you can
+restore the origin (as well as other remotes) from a configuration.
+
+To use git-grouper, you first create a configuration file in L<IOD> format, e.g.
+at I<~/.config/git-grouper.conf>. In it, you define your groups, remotes, nad
+other things. Details on the configuration can be read in the L</CONFIGURATION
+FILE> section. After that, you can use run this command with one of the
+available subcommands (see L</SYNOPSIS>).
+
+
+=head1 CONFIGURATION FILE
+
+Configuration file is in L<IOD> format, which is based on INI that is familiar
+to most. Groups and remotes are written as IOD sections, much like in git
+configuration.
+
+=head2 A sample configuration file
+
+ [remote "github"]
+ url_template = git@github.com:[% github_username %]/[% repo_name %].git
+ fetch = +refs/heads/*:refs/remotes/origin/*
+
+ [remote "github_company1"]
+ url_template = git@github.com+company1:company1/[% repo_name %].git
+ fetch = +refs/heads/*:refs/remotes/origin/*
+
+ [remote "privbak"]
+ url_template = ssh://u1@hostname:/path/to/[% repo_name %].git
+ fetch = +refs/heads/*:refs/remotes/gitbak/*
+
+ [group "company1"]
+ repo_name_pattern = /^company1-/
+ remotes = ["github_company1", "privbak"]
+ username = foo
+ email = foo@company1.com
+
+ [group "priv_perl"]
+ repo_name_pattern = /^perl-/
+ has_tags = ["priv"]
+ remotes = ["github", "privbak"]
+ username = perlancar
+ email = perlancar@gmail.com
+
+ [group "perl"]
+ repo_name_pattern = /^perl-/
+ github_username = perlancar
+ remotes = ["github", "privbak"]
+ username = perlancar
+ email = perlancar@gmail.com
+
+ [group "other"]
+ repo_name_pattern = /^./
+ remotes = ["privbak"]
+ username = foo
+ email = foo@example.com
+
+=head2 Group definition
+
+ [group GROUPNAME]
+ ; filter keys
+ repo_pattern_name = /REGEX/
+ has_all_tags = [TAG1, TAG2, ...]
+ has_any_tags = [TAG1, TAG2, ...]
+ lacks_all_tags = [TAG1, TAG2, ...]
+ lacks_any_tags = [TAG1, TAG2, ...]
+
+ ; attribute keys
+ remotes = [REMOTE1, REMOTE2, ...]
+ user_name = SOME NAME
+ email = EMAIL@ADDRESS
+
+Group name must be an I<identifier>, which means it must start with a letter or
+underscore, and contains only alphanumeric characters.
+
+A group definition contains I<filter keys> (keys which specify which
+repositories can belong to this group) and I<attribute keys> (keys that set what
+attributes repositories in this group should have). To belong to the group,
+I<all> filters must be satisfied.
+
+Note that instead of satisfying all filters, you can also make a repository
+belong to a group by having an empty file named C<.group-GROUPNAME> in the
+top-level directory.
+
+=over
+
+=item * repo_pattern_name
+
+A regex pattern. Repositories that have names that match this pattern will
+satisfy this filter.
+
+=item * has_all_tags
+
+An array of strings (tags). Repositories must have all the specified tags to
+satisfy this filter. Tags are identifiers. Repository can be tagged by having an
+empty file that is named C<.tag-TAGNAME> in the top-level directory.
+
+=item * has_any_tags
+
+An array of strings (tags). Repositories just need to have one of the specified
+tags to satisfy this filter.
+
+=item * lacks_all_tags
+
+An array of strings (tags). Repositories must lack all the specified tags to
+satisfy this filter.
+
+=item * lacks_any_tags
+
+An array of strings (tags). Repositories just need to lack any the specified
+tags to satisfy this filter.
+
+=back
+
+
+=head1 append:SEE ALSO
+
+L<gitbunch> from L<Git::Bunch>
+
+=cut
