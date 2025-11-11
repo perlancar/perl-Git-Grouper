@@ -576,6 +576,15 @@ sub _configure_repo_single {
                 log_trace "Existing remotes: %s", \@existing_remotes;
             }
 
+            if ($args->{clean_remotes}) {
+                for my $remotename (@existing_remotes) {
+                    log_info "  Deleting remote $remotename first";
+                    system "git", "remote", "remove", $remotename;
+                    log_error("Can't remove remote %s: %s", $remotename, explain_child_error()) if $?;
+                }
+                @existing_remotes = ();
+            }
+
             my $i = -1;
             for my $remotename (@{ $group->{remotes} }) {
                 my $remote = $config->{remotes}{$remotename};
@@ -610,15 +619,6 @@ sub _configure_repo_single {
                     $configured_remotes{$remotename_to_set}++;
                 } # for $remotename_to_set
             } # for $remotename
-
-            if ($args->{clean_remotes}) {
-                for my $remotename (@existing_remotes) {
-                    next if $configured_remotes{$remotename};
-                    log_info "  Deleting remote $remotename because it's not in groups configuration";
-                    system "git", "remote", "remove", $remotename;
-                    log_error("Can't remove remote %s: %s", $remotename, explain_child_error()) if $?;
-                }
-            }
         } # SET_REMOTES
 
     } # for $groupname
