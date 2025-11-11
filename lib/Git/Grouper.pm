@@ -55,9 +55,9 @@ our %argspec1plus_repo = (
     },
 );
 
-our %argspec0_group = (
-    group => {
-        schema => 'identifier127*',
+our %argspec0_group_spec = (
+    group_spec => {
+        schema => 'str*',
         pos => 0,
     },
 );
@@ -89,6 +89,7 @@ sub _parse_config {
                     }
                     $curgroup = { group => $groupname };
                     push @{ $config->{groups} }, $curgroup;
+                    $config->{groups_by_name} = $curgroup;
                     return;
                 } else {
                     die "Invalid group section $cursection, please use 'group \"foo\"'";
@@ -183,10 +184,27 @@ sub _get_repos {
     [200, "OK", \@repos];
 }
 
+sub _parse_group_spec {
+    my $spec0 = shift;
+
+    my $group_spec = {op=>'and', groups=>[]};
+    if ($spec0 =~ /\A\w+(?:\s*\&\s*\w+)*\z/) {
+        $group_spec->{groups} = [split /\s*\&\s*/, $spec0];
+    } elsif ($spec0 =~ /\A\w+(?:\s*\|\s*\w+)*\z/) {
+        $group_spec->{op} = 'or';
+        $group_spec->{groups} = [split /\s*\|\s*/, $spec0];
+    } else {
+        return [400, "Invalid group specification $spec0, please use G1|G2|... or G1&G2&..."];
+    }
+
+    [200, "OK", $group_spec];
+}
+
 $SPEC{ls_groups} = {
     v => 1.1,
     summary => 'List defined groups',
     args => {
+        %argspecs_common,
         %argspecopt_detail,
     },
     args_rels => {
@@ -209,6 +227,7 @@ $SPEC{get_repo_group} = {
     v => 1.1,
     summary => 'Determine the group(s) of specified repos',
     args => {
+        %argspecs_common,
         %argspec0plus_repo,
     },
 };
@@ -241,10 +260,10 @@ sub get_repo_group {
         for my $group (@{ $config->{groups} }) {
             next if grep { $_ eq $group->{group} } @repo_groups;
 
-            log_trace "Matching repo %s with group %s ...", $repo, $group->{group};
+            #log_trace "Matching repo %s with group %s ...", $repo, $group->{group};
             if ($group->{repo_name_pattern}) {
                 if ($repo !~ $group->{repo_name_pattern}) {
-                    log_trace "  Skipped group %s (repo %s does not match repo_name_pattern pattern %s)", $group->{group}, $repo, $group->{repo_name_pattern};
+                    #log_trace "  Skipped group %s (repo %s does not match repo_name_pattern pattern %s)", $group->{group}, $repo, $group->{repo_name_pattern};
                     next GROUP;
                 }
             }
@@ -311,6 +330,214 @@ sub get_repo_group {
     }
 
     [200, "OK", \@res];
+}
+
+$SPEC{filter_repo_has_group} = {
+    v => 1.1,
+    summary => 'Only list repos that belong to specified group(s)',
+    args => {
+        %argspecs_common,
+        %argspec0_group_spec,
+        %argspec1plus_repo,
+    },
+};
+sub filter_repo_has_group {
+    my %args = @_;
+    my $config; { my $res = _read_config(%args); return $res unless $res->[0] == 200; $config = $res->[2] }
+    my $group_spec; { my $res = _parse_group_spec($args{group_spec}); return $res unless $res->[0] == 200; $group_spec = $res->[2] }
+    my $rows; { my $res = get_repo_group(%args, config => $config); return $res unless $res->[0] == 200; $rows = $res->[2] }
+
+    my @repos;
+  REPO:
+    for my $row (@$rows) {
+        my @repo_groups = ref($row->{groups}) eq 'ARRAY' ?
+            @{ $row->{groups} } : $row->{groups} eq '' ? () : ($row->{groups});
+        #use DD; dd \@repo_groups;
+        #log_trace "Filtering repo %s (groups=%s) ...", $row->{repo0}, \@repo_groups;
+
+        my $match;
+      GROUP:
+        if ($group_spec->{op} eq 'and') {
+            for my $group (@{ $group_spec->{groups} }) {
+                if ($group_spec->{op} eq 'and') {
+                    next REPO unless grep { $group eq $_ } @repo_groups;
+                }
+            }
+            $match++;
+        } else {
+            # or
+            for my $group (@{ $group_spec->{groups} }) {
+                do { $match++; last } if grep { $group eq $_ } @repo_groups;
+            }
+        }
+        next unless $match;
+        push @repos, $row->{repo0};
+    }
+
+    [200, "OK", \@repos];
+}
+
+$SPEC{filter_repo_lacks_group} = {
+    v => 1.1,
+    summary => 'Only list repos that do not belong to specified group(s)',
+    args => {
+        %argspecs_common,
+        %argspec0_group_spec,
+        %argspec1plus_repo,
+    },
+};
+sub filter_repo_lacks_group {
+    my %args = @_;
+    my $config; { my $res = _read_config(%args); return $res unless $res->[0] == 200; $config = $res->[2] }
+    my $group_spec; { my $res = _parse_group_spec($args{group_spec}); return $res unless $res->[0] == 200; $group_spec = $res->[2] }
+    my $rows; { my $res = get_repo_group(%args, config => $config); return $res unless $res->[0] == 200; $rows = $res->[2] }
+
+    my @repos;
+  REPO:
+    for my $row (@$rows) {
+        my @repo_groups = ref($row->{groups}) eq 'ARRAY' ?
+            @{ $row->{groups} } : $row->{groups} eq '' ? () : ($row->{groups});
+        log_trace "Filtering repo %s (groups=%s) ...", $row->{repo0}, \@repo_groups;
+
+        my $match;
+      GROUP:
+        if ($group_spec->{op} eq 'and') {
+            for my $group (@{ $group_spec->{groups} }) {
+                if ($group_spec->{op} eq 'and') {
+                    next REPO if grep { $group eq $_ } @repo_groups;
+                }
+            }
+            $match++;
+        } else {
+            # or
+            for my $group (@{ $group_spec->{groups} }) {
+                do { $match++; last } unless grep { $group eq $_ } @repo_groups;
+            }
+        }
+        next unless $match;
+        push @repos, $row->{repo0};
+    }
+
+    [200, "OK", \@repos];
+}
+
+$SPEC{filter_repo_orphan} = {
+    v => 1.1,
+    summary => 'Only list repos that do not belong to any group(s)',
+    args => {
+        %argspecs_common,
+        %argspec0plus_repo,
+    },
+};
+sub filter_repo_orphan {
+    my %args = @_;
+    my $config; { my $res = _read_config(%args); return $res unless $res->[0] == 200; $config = $res->[2] }
+    my $rows; { my $res = get_repo_group(%args, config => $config); return $res unless $res->[0] == 200; $rows = $res->[2] }
+
+    my @repos;
+  REPO:
+    for my $row (@$rows) {
+        next unless $row->{groups} eq '';
+        push @repos, $row->{repo0};
+    }
+
+    [200, "OK", \@repos];
+}
+
+$SPEC{filter_repo_not_orphan} = {
+    v => 1.1,
+    summary => 'Only list repos that belong to at least one group',
+    args => {
+        %argspecs_common,
+        %argspec0plus_repo,
+    },
+};
+sub filter_repo_not_orphan {
+    my %args = @_;
+    my $config; { my $res = _read_config(%args); return $res unless $res->[0] == 200; $config = $res->[2] }
+    my $rows; { my $res = get_repo_group(%args, config => $config); return $res unless $res->[0] == 200; $rows = $res->[2] }
+
+    my @repos;
+  REPO:
+    for my $row (@$rows) {
+        next if $row->{groups} eq '';
+        push @repos, $row->{repo0};
+    }
+
+    [200, "OK", \@repos];
+}
+
+$SPEC{filter_repo_multiple_group} = {
+    v => 1.1,
+    summary => 'Only list repos that belong to at least two groups',
+    args => {
+        %argspecs_common,
+        %argspec0plus_repo,
+    },
+};
+sub filter_repo_multiple_group {
+    my %args = @_;
+    my $config; { my $res = _read_config(%args); return $res unless $res->[0] == 200; $config = $res->[2] }
+    my $rows; { my $res = get_repo_group(%args, config => $config); return $res unless $res->[0] == 200; $rows = $res->[2] }
+
+    my @repos;
+  REPO:
+    for my $row (@$rows) {
+        next unless ref($row->{groups}) eq 'ARRAY';
+        push @repos, $row->{repo0};
+    }
+
+    [200, "OK", \@repos];
+}
+
+$SPEC{filter_repo_single_group} = {
+    v => 1.1,
+    summary => 'Only list repos that belong to just a single group',
+    args => {
+        %argspecs_common,
+        %argspec0plus_repo,
+    },
+};
+sub filter_repo_single_group {
+    my %args = @_;
+    my $config; { my $res = _read_config(%args); return $res unless $res->[0] == 200; $config = $res->[2] }
+    my $rows; { my $res = get_repo_group(%args, config => $config); return $res unless $res->[0] == 200; $rows = $res->[2] }
+
+    my @repos;
+  REPO:
+    for my $row (@$rows) {
+        next if ref($row->{groups}) eq 'ARRAY';
+        next if $row->{groups} eq '';
+        push @repos, $row->{repo0};
+    }
+
+    [200, "OK", \@repos];
+}
+
+$SPEC{configure_repo} = {
+    v => 1.1,
+    summary => "Configure repo based on group's attributes",
+    args => {
+        %argspecs_common,
+        %argspec0plus_repo,
+    },
+};
+sub configure_repo {
+    my %args = @_;
+    my $config; { my $res = _read_config(%args); return $res unless $res->[0] == 200; $config = $res->[2] }
+    my $rows; { my $res = get_repo_group(%args, config => $config); return $res unless $res->[0] == 200; $rows = $res->[2] }
+
+    my @repos;
+  REPO:
+    for my $row (@$rows) {
+        log_debug "Processing repo %s (group=%s) ...", $row->{repo0}, $row->{groups};
+        if ($row->{groups} eq '') {
+            log_debug "  Skipping repo because it does not belong to any group";
+            next REPO;
+        }
+    }
+
+    [200, "OK", \@repos];
 }
 
 1;

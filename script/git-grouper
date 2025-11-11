@@ -14,8 +14,17 @@ use Perinci::CmdLine::Any;
 Perinci::CmdLine::Any->new(
     url => '/Git/Grouper/',
     subcommands => {
-        ls => { url => '/Git/Grouper/ls' },
+        "ls-groups" => { url => '/Git/Grouper/ls_groups' },
+        "get-repo-group" => { url => '/Git/Grouper/get_repo_group' },
+        "filter-repo-has-group" => { url => '/Git/Grouper/filter_repo_has_group' },
+        "filter-repo-lacks-group" => { url => '/Git/Grouper/filter_repo_lacks_group' },
+        "filter-repo-orphan" => { url => '/Git/Grouper/filter_repo_orphan' },
+        "filter-repo-not-orphan" => { url => '/Git/Grouper/filter_repo_not_orphan' },
+        "filter-repo-multiple-group" => { url => '/Git/Grouper/filter_repo_multiple_group' },
+        "filter-repo-single-group" => { url => '/Git/Grouper/filter_repo_single_group' },
+        "configure-repo" => { url => '/Git/Grouper/configure_repo' },
     },
+    #default_subcommand => 'get-repo-group',
     read_env => 0,
     read_config => 0,
     log => 1,
@@ -36,37 +45,39 @@ List all defined groups:
 
 Check which group(s) do repositories belong to:
 
- % git-grouper get-groups REPO1 REPO2 ...
+ % git-grouper get-repo-group REPO1 REPO2 ...
 
 List repositories that belong to specified group(s):
 
- % git-grouper include-group GROUP REPO1 REPO2 ...
- % git-grouper include-group 'GROUP1&GROUP2' REPO1 REPO2 ... ; # repos must belong to all of specified groups
- % git-grouper include-group 'GROUP1|GROUP2' REPO1 REPO2 ... ; # repos must belong to any of specified groups
+ % git-grouper filter-repo-has-group GROUP REPO1 REPO2 ...
+ % git-grouper filter-repo-has-group 'GROUP1&GROUP2' REPO1 REPO2 ... ; # repos must belong to all of specified groups
+ % git-grouper filter-repo-has-group 'GROUP1|GROUP2' REPO1 REPO2 ... ; # repos must belong to any of specified groups
 
 List repositories that do not belong to specified group(s):
 
- % git-grouper exclude-group GROUP REPO1 REPO2 ...
- % git-grouper exclude-group 'GROUP1&GROUP2' REPO1 REPO2 ... ; # repos must not belong to any of specified groups
- % git-grouper exclude-group 'GROUP1|GROUP2' REPO1 REPO2 ... ; # repos must not belong to just one of specified groups
+ % git-grouper filter-repo-lacks-group GROUP REPO1 REPO2 ...
+ % git-grouper filter-repo-lacks-group 'GROUP1&GROUP2' REPO1 REPO2 ... ; # repos must not belong to any of specified groups
+ % git-grouper filter-repo-lacks-group 'GROUP1|GROUP2' REPO1 REPO2 ... ; # repos must not belong to just one of specified groups
 
 List repositories that do not belong to any group:
 
- % git-grouper include-orphan REPO1 REPO2 ...
+ % git-grouper filter-repo-orphan REPO1 REPO2 ...
 
 List repositories that belong to a group or more:
 
- % git-grouper exclude-orphan REPO1 REPO2 ...
+ % git-grouper filter-repo-not-orphan REPO1 REPO2 ...
 
 List repositories that belong to multiple (instead of a single) group:
 
- % git-grouper include-multiple REPO1 REPO2 ...
+ % git-grouper filter-repo-multiple-group REPO1 REPO2 ...
 
 List repositories that belong to just one (instead of multiple) group:
 
- % git-grouper exclude-multiple REPO1 REPO2 ...
+ % git-grouper filter-repo-single-group REPO1 REPO2 ...
 
 =head2 Listing remotes
+
+ TODO
 
 =head2 Configuring repositories based on group's attributes
 
