@@ -18,10 +18,51 @@ our @EXPORT_OK = qw(git_grouper_group);
 
 our %SPEC;
 
-sub _parse_config {
-    require Config::IOD::Reader;
-    require Regexp::From::String;
+$SPEC{':package'} = {
+    v => 1.1,
+    summary => 'Categorize git repositories into one/more groups and perform actions on them',
+};
 
+our %argspecs_common = (
+    config_file => {
+        schema => 'filename*',
+    },
+    config => {
+        schema => 'hash*',
+    },
+);
+
+our %argspecopt_detail = (
+    detail => {
+        schema => 'bool*',
+        cmdline_aliases => {l=>{}},
+    },
+);
+
+our %argspec0plus_repo = (
+    repo => {
+        schema => ['array*' => of=> 'str*'],
+        pos => 0,
+        slurpy => 1,
+    },
+);
+
+our %argspec1plus_repo = (
+    repo => {
+        schema => ['array*' => of=> 'str*'],
+        pos => 1,
+        slurpy => 1,
+    },
+);
+
+our %argspec0_group = (
+    group => {
+        schema => 'identifier127*',
+        pos => 0,
+    },
+);
+
+sub _parse_config {
     my $path = shift;
 
     my $config = {
@@ -86,88 +127,9 @@ sub _parse_config {
     [200, "OK", $config];
 }
 
-$SPEC{git_grouper_group} = {
-    v => 1.1,
-    summary => 'Group one/more repositories according to rules',
-    description => <<'MARKDOWN',
-
-Given an <pm:IOD> configuration file in *~/.config/git-grouper.conf* like this:
-
-    [remote "github"]
-    url_template = git@github.com:[% github_username %]/[% repo_name %].git
-    fetch = +refs/heads/*:refs/remotes/origin/*
-
-    [remote "github_company1"]
-    url_template = git@github.com+company1:company1/[% repo_name %].git
-    fetch = +refs/heads/*:refs/remotes/origin/*
-
-    [remote "privbak"]
-    url_template = ssh://u1@hostname:/path/to/[% repo_name %].git
-    fetch = +refs/heads/*:refs/remotes/gitbak/*
-
-    [group "company1"]
-    repo_name_pattern = /^company1-/
-    remotes = ["github_company1", "privbak"]
-    username = foo
-    email = foo@company1.com
-
-    [group "priv_perl"]
-    repo_name_pattern = /^perl-/
-    has_tags = ["priv"]
-    remotes = ["github", "privbak"]
-    username = perlancar
-    email = perlancar@gmail.com
-
-    [group "perl"]
-    repo_name_pattern = /^perl-/
-    github_username = perlancar
-    remotes = ["github", "privbak"]
-    username = perlancar
-    email = perlancar@gmail.com
-
-    [group "other"]
-    repo_name_pattern = /^./
-    remotes = ["privbak"]
-    username = foo
-    email = foo@example.com
-
-Suppose we are now at */home/u1/repos/perl-Git-Grouper*. This code:
-
-    my $res = git_grouper_group(config_file => "/home/u1/.config/git-grouper.conf");
-
-will check the git repository in the current directory and return something
-like:
-
-    $res = [200, "OK", "perl"];
-
-To check multiple repositories:
-
-    my $res = git_grouper_group(config_file => "/home/u1/.config/git-grouper.conf", repo => ["/home/u1/repos/perl-Git-Grouper", "repo2"]);
-
-MARKDOWN
-    args => {
-        config_file => {
-            schema => 'filename*',
-        },
-        config => {
-            schema => 'hash*',
-        },
-        detail => {
-            schema => 'bool*',
-            cmdline_aliases => {l=>{}},
-        },
-        repo => {
-            schema => ['array*' => of=> 'str*'],
-            pos => 0,
-            slurpy => 1,
-        },
-    },
-    args_rels => {
-        choose_one => [qw/config_file config/],
-    },
-};
-sub git_grouper_group {
-    require App::GitUtils;
+sub _read_config {
+    require Config::IOD::Reader;
+    require Regexp::From::String;
 
     my %args = @_;
 
@@ -198,6 +160,13 @@ sub git_grouper_group {
         return $res unless $res->[0] == 200;
         $config = $res->[2];
     }
+    [200, "OK", $config];
+}
+
+sub _get_repos {
+    require App::GitUtils;
+
+    my %args = @_;
 
     my @repos;
     my $multi;
@@ -211,65 +180,148 @@ sub git_grouper_group {
     } else {
         push @repos, ".";
     }
+    [200, "OK", \@repos];
+}
 
-    #my $envres = envresmulti();
+$SPEC{ls_groups} = {
+    v => 1.1,
+    summary => 'List defined groups',
+    args => {
+        %argspecopt_detail,
+    },
+    args_rels => {
+        choose_one => [qw/config_file config/],
+    },
+};
+sub ls_groups {
+    my %args = @_;
+    my $config; { my $res = _read_config(%args); return $res unless $res->[0] == 200; $config = $res->[2] }
+
+    my @res;
+    for my $group (@{ $config->{groups} }) {
+        push @res, {name=>$group->{group}, summary=>$group->{summary}};
+    }
+    @res = map { $_->{name} } @res unless $args{detail};
+    [200, "OK", \@res];
+}
+
+$SPEC{get_repo_group} = {
+    v => 1.1,
+    summary => 'Determine the group(s) of specified repos',
+    args => {
+        %argspec0plus_repo,
+    },
+};
+sub get_repo_group {
+    my %args = @_;
+    my $config; { my $res = _read_config(%args); return $res unless $res->[0] == 200; $config = $res->[2] }
+    my $repos;  { my $res = _get_repos(%args); return $res unless $res->[0] == 200; $repos = $res->[2] }
+
     my @res;
   REPO:
-    for my $repo (@repos) {
-        local $CWD = $repo;
-        my $res = App::GitUtils::info();
-        unless ($res->[0] == 200) {
-            #$envres->add_result($res->[0], $res->[1], {item_id=>$repo});
-            #next REPO;
-            return [500, "Can't get info for repo '$repo': $res->[0] - $res->[1]"];
-        }
-        my $repo_name = $res->[2]{repo_name};
+    for my $repo0 (@$repos) {
+        local $CWD = $repo0;
 
-        my $matching_group;
-        FIND_GROUP: {
-            GROUP:
-              for my $group (@{ $config->{groups} }) {
-                  log_trace "Matching repo %s with group %s ...", $repo_name, $group->{group};
-                  if ($group->{repo_name_pattern}) {
-                      if ($repo_name !~ $group->{repo_name_pattern}) {
-                          log_trace "  Skipped group %s (repo %s does not match repo_name_pattern pattern %s)", $group->{group}, $repo_name, $group->{repo_name_pattern};
-                          next GROUP;
-                      }
-                  }
-                  if ($group->{has_tags}) {
-                      my @tags = map { my $val = $_; $val =~ s/^\.tag-//; $val } glob(".tag-*");
-                      log_trace "Repo's tags: %s", \@tags;
-                      for my $has_tag (@{ $group->{has_tags} }) {
-                          if (!(grep { $_ eq $has_tag } @tags)) {
-                              log_trace "  Skipped group %s (repo %s does not have tag %s)", $group->{group}, $repo_name, $has_tag;
-                              next GROUP;
-                          }
-                      }
-                  }
-                  $matching_group = $group;
-                  last;
-              }
-          } # FIND_GROUP
-        if ($matching_group) {
-            push @res, $matching_group;
-        } else {
-            #$envres->add_result(404, "Can't find group for repo $repo_name", {item_id=>$repo});
-            return [404, "Can't find group for repo name $repo_name"];
+        my $repo;
+        {
+            my $res = App::GitUtils::info();
+            unless ($res->[0] == 200) {
+                #$envres->add_result($res->[0], $res->[1], {item_id=>$repo});
+                #next REPO;
+                return [500, "Can't get info for repo '$repo': $res->[0] - $res->[1]"];
+            }
+            $repo = $res->[2]{repo_name};
         }
+
+        my @repo_groups = map { my $val = $_; $val =~ s/^\.group-//; $val } glob(".group-*");
+
+        my $res = { repo0 => $repo0, repo => $repo, groups => [@repo_groups] };
+
+      GROUP:
+        for my $group (@{ $config->{groups} }) {
+            next if grep { $_ eq $group->{group} } @repo_groups;
+
+            log_trace "Matching repo %s with group %s ...", $repo, $group->{group};
+            if ($group->{repo_name_pattern}) {
+                if ($repo !~ $group->{repo_name_pattern}) {
+                    log_trace "  Skipped group %s (repo %s does not match repo_name_pattern pattern %s)", $group->{group}, $repo, $group->{repo_name_pattern};
+                    next GROUP;
+                }
+            }
+
+            my @repo_tags = map { my $val = $_; $val =~ s/^\.tag-//; $val } glob(".tag-*");
+            #log_trace "Repo's tags: %s", \@repo_tags;
+            if ($group->{has_all_tags}) {
+                for my $tag (@{ $group->{has_all_tags} }) {
+                    if (!(grep { $_ eq $tag } @repo_tags)) {
+                        #log_trace "  Skipped group %s (repo %s lacks tag %s)", $group->{group}, $repo, $tag;
+                        next GROUP;
+                    }
+                }
+            }
+            if ($group->{lacks_all_tags}) {
+                for my $tag (@{ $group->{lacks_all_tags} }) {
+                    if (grep { $_ eq $tag } @repo_tags) {
+                        #log_trace "  Skipped group %s (repo %s has tag %s)", $group->{group}, $repo, $tag;
+                        next GROUP;
+                    }
+                }
+            }
+            if ($group->{has_any_tags}) {
+                for my $tag (@{ $group->{has_any_tags} }) {
+                    if (grep { $_ eq $tag } @repo_tags) {
+                        #log_trace "  Including group %s (repo %s has tag %s)", $group->{group}, $repo, $tag;
+                        goto SATISFY_FILTER_HAS_ANY_TAGS;
+                    }
+                }
+                #log_trace "  Skipped group %s (repo %s does not have any tag %s)", $group->{group}, $repo, $group->{has_any_tags};
+                next GROUP;
+              SATISFY_FILTER_HAS_ANY_TAGS:
+            }
+
+            if ($group->{has_any_tags}) {
+                for my $tag (@{ $group->{lacks_any_tags} }) {
+                    if (!(grep { $_ eq $tag } @repo_tags)) {
+                        #log_trace "  Including group %s (repo %s lacks tag %s)", $group->{group}, $repo, $tag;
+                        goto SATISFY_FILTER_LACKS_ANY_TAGS;
+                    }
+                }
+                #log_trace "  Skipped group %s (repo %s does not lack any tag %s)", $group->{group}, $repo, $group->{lacks_any_tags};
+                next GROUP;
+              SATISFY_FILTER_LACKS_ANY_TAGS:
+            }
+
+          MATCH_GROUP:
+            push @{ $res->{groups} }, $group->{group};
+        } # FIND_GROUP
+
+        push @res, $res;
     } # REPO
     #$envres->as_struct;
 
-    unless ($args{detail}) {
-        @res = map { $_->{group} } @res;
+    for (@res) {
+        if (@{ $_->{groups} } == 0) {
+            $_->{groups} = "";
+        } elsif (@{ $_->{groups} } == 1) {
+            $_->{groups} = $_->{groups}[0];
+        }
+    }
+    unless (@res > 1) {
+        @res = map { $_->{groups} } @res;
     }
 
-    [200, "OK", $multi ? \@res : $res[0]];
+    [200, "OK", \@res];
 }
 
 1;
 # ABSTRACT:
 
 =head1 SYNOPSIS
+
+See the included script L<git-grouper>.
+
+
+=head1 DESCRIPTION
 
 
 =head1 append:SEE ALSO
