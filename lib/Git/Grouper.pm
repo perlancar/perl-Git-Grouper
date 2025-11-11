@@ -262,8 +262,11 @@ sub get_repo_group {
         for my $group (@{ $config->{groups} }) {
             next if grep { $_ eq $group->{group} } @repo_groups;
 
+            my $num_filters;
+
             #log_trace "Matching repo %s with group %s ...", $repo, $group->{group};
             if ($group->{repo_name_pattern}) {
+                $num_filters++;
                 if ($repo !~ $group->{repo_name_pattern}) {
                     #log_trace "  Skipped group %s (repo %s does not match repo_name_pattern pattern %s)", $group->{group}, $repo, $group->{repo_name_pattern};
                     next GROUP;
@@ -273,6 +276,7 @@ sub get_repo_group {
             my @repo_tags = map { my $val = $_; $val =~ s/^\.tag-//; $val } glob(".tag-*");
             #log_trace "Repo's tags: %s", \@repo_tags;
             if ($group->{has_all_tags}) {
+                $num_filters++;
                 for my $tag (@{ $group->{has_all_tags} }) {
                     if (!(grep { $_ eq $tag } @repo_tags)) {
                         #log_trace "  Skipped group %s (repo %s lacks tag %s)", $group->{group}, $repo, $tag;
@@ -281,6 +285,7 @@ sub get_repo_group {
                 }
             }
             if ($group->{lacks_all_tags}) {
+                $num_filters++;
                 for my $tag (@{ $group->{lacks_all_tags} }) {
                     if (grep { $_ eq $tag } @repo_tags) {
                         #log_trace "  Skipped group %s (repo %s has tag %s)", $group->{group}, $repo, $tag;
@@ -289,6 +294,7 @@ sub get_repo_group {
                 }
             }
             if ($group->{has_any_tags}) {
+                $num_filters++;
                 for my $tag (@{ $group->{has_any_tags} }) {
                     if (grep { $_ eq $tag } @repo_tags) {
                         #log_trace "  Including group %s (repo %s has tag %s)", $group->{group}, $repo, $tag;
@@ -301,6 +307,7 @@ sub get_repo_group {
             }
 
             if ($group->{has_any_tags}) {
+                $num_filters++;
                 for my $tag (@{ $group->{lacks_any_tags} }) {
                     if (!(grep { $_ eq $tag } @repo_tags)) {
                         #log_trace "  Including group %s (repo %s lacks tag %s)", $group->{group}, $repo, $tag;
@@ -313,7 +320,9 @@ sub get_repo_group {
             }
 
           MATCH_GROUP:
-            push @{ $res->{groups} }, $group->{group};
+            if ($num_filters) {
+                push @{ $res->{groups} }, $group->{group};
+            }
         } # FIND_GROUP
 
         push @res, $res;
