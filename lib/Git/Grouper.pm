@@ -7,6 +7,8 @@ use Log::ger;
 
 use Exporter qw(import);
 use File::chdir;
+use IPC::System::Options -log=>1, qw(system);
+use Proc::ChildError qw(explain_child_error);
 use Perinci::Object qw(envresmulti);
 
 # AUTHORITY
@@ -89,7 +91,7 @@ sub _parse_config {
                     }
                     $curgroup = { group => $groupname };
                     push @{ $config->{groups} }, $curgroup;
-                    $config->{groups_by_name} = $curgroup;
+                    $config->{groups_by_name}{$groupname} = $curgroup;
                     return;
                 } else {
                     die "Invalid group section $cursection, please use 'group \"foo\"'";
@@ -247,7 +249,7 @@ sub get_repo_group {
             unless ($res->[0] == 200) {
                 #$envres->add_result($res->[0], $res->[1], {item_id=>$repo});
                 #next REPO;
-                return [500, "Can't get info for repo '$repo': $res->[0] - $res->[1]"];
+                return [500, "Can't get info for repo '$repo0': $res->[0] - $res->[1]"];
             }
             $repo = $res->[2]{repo_name};
         }
@@ -325,7 +327,7 @@ sub get_repo_group {
             $_->{groups} = $_->{groups}[0];
         }
     }
-    unless (@res > 1) {
+    unless (@res > 1 || $args{_always_array}) {
         @res = map { $_->{groups} } @res;
     }
 
@@ -345,7 +347,7 @@ sub filter_repo_has_group {
     my %args = @_;
     my $config; { my $res = _read_config(%args); return $res unless $res->[0] == 200; $config = $res->[2] }
     my $group_spec; { my $res = _parse_group_spec($args{group_spec}); return $res unless $res->[0] == 200; $group_spec = $res->[2] }
-    my $rows; { my $res = get_repo_group(%args, config => $config); return $res unless $res->[0] == 200; $rows = $res->[2] }
+    my $rows; { my $res = get_repo_group(%args, config => $config, _always_array=>1); return $res unless $res->[0] == 200; $rows = $res->[2] }
 
     my @repos;
   REPO:
@@ -390,7 +392,7 @@ sub filter_repo_lacks_group {
     my %args = @_;
     my $config; { my $res = _read_config(%args); return $res unless $res->[0] == 200; $config = $res->[2] }
     my $group_spec; { my $res = _parse_group_spec($args{group_spec}); return $res unless $res->[0] == 200; $group_spec = $res->[2] }
-    my $rows; { my $res = get_repo_group(%args, config => $config); return $res unless $res->[0] == 200; $rows = $res->[2] }
+    my $rows; { my $res = get_repo_group(%args, config => $config, _always_array=>1); return $res unless $res->[0] == 200; $rows = $res->[2] }
 
     my @repos;
   REPO:
@@ -432,7 +434,7 @@ $SPEC{filter_repo_orphan} = {
 sub filter_repo_orphan {
     my %args = @_;
     my $config; { my $res = _read_config(%args); return $res unless $res->[0] == 200; $config = $res->[2] }
-    my $rows; { my $res = get_repo_group(%args, config => $config); return $res unless $res->[0] == 200; $rows = $res->[2] }
+    my $rows; { my $res = get_repo_group(%args, config => $config, _always_array=>1); return $res unless $res->[0] == 200; $rows = $res->[2] }
 
     my @repos;
   REPO:
@@ -455,7 +457,7 @@ $SPEC{filter_repo_not_orphan} = {
 sub filter_repo_not_orphan {
     my %args = @_;
     my $config; { my $res = _read_config(%args); return $res unless $res->[0] == 200; $config = $res->[2] }
-    my $rows; { my $res = get_repo_group(%args, config => $config); return $res unless $res->[0] == 200; $rows = $res->[2] }
+    my $rows; { my $res = get_repo_group(%args, config => $config, _always_array=>1); return $res unless $res->[0] == 200; $rows = $res->[2] }
 
     my @repos;
   REPO:
@@ -478,7 +480,7 @@ $SPEC{filter_repo_multiple_group} = {
 sub filter_repo_multiple_group {
     my %args = @_;
     my $config; { my $res = _read_config(%args); return $res unless $res->[0] == 200; $config = $res->[2] }
-    my $rows; { my $res = get_repo_group(%args, config => $config); return $res unless $res->[0] == 200; $rows = $res->[2] }
+    my $rows; { my $res = get_repo_group(%args, config => $config, _always_array=>1); return $res unless $res->[0] == 200; $rows = $res->[2] }
 
     my @repos;
   REPO:
@@ -501,7 +503,7 @@ $SPEC{filter_repo_single_group} = {
 sub filter_repo_single_group {
     my %args = @_;
     my $config; { my $res = _read_config(%args); return $res unless $res->[0] == 200; $config = $res->[2] }
-    my $rows; { my $res = get_repo_group(%args, config => $config); return $res unless $res->[0] == 200; $rows = $res->[2] }
+    my $rows; { my $res = get_repo_group(%args, config => $config, _always_array=>1); return $res unless $res->[0] == 200; $rows = $res->[2] }
 
     my @repos;
   REPO:
@@ -512,6 +514,92 @@ sub filter_repo_single_group {
     }
 
     [200, "OK", \@repos];
+}
+
+sub _fill_template {
+    require Template;
+
+    my ($str, $vars) = @_;
+
+    state $template = Template->new({
+    });
+
+    my $output;
+    $template->process(\$str, $vars, \$output) or die "Can't process template $str: ".$template->error;
+    $output;
+}
+
+sub _configure_repo_single {
+    my ($row, $config) = @_;
+
+    local $CWD = $row->{repo0};
+
+    my @groups = ref($row->{groups}) eq 'ARRAY' ? @{$row->{groups}} :
+        $row->{groups} eq '' ? () : ($row->{groups});
+    for my $groupname (@groups) {
+        my $group = $config->{groups_by_name}{$groupname};
+
+      SET_USERNAME: {
+            last unless defined $group->{user_name};
+            log_info "  Setting user.name to %s", $group->{user_name};
+            system("git", "config", "set", "user.name", $group->{user_name});
+            log_error("Can't set user.name: %s", explain_child_error()) if $?;
+        }
+
+      SET_EMAIL: {
+            last unless defined $group->{user_email};
+            log_info "  Setting user.email to %s", $group->{user_email};
+            system("git", "config", "set", "user.email", $group->{user_email});
+            log_error("Can't set user.email: %s", explain_child_error()) if $?;
+        }
+
+      SET_REMOTES: {
+            last unless $group->{remotes};
+
+            my @existing_remotes;
+            {
+                system({capture_stdout=>\my $out}, "git", "remote");
+                chomp(@existing_remotes = split /^/m, $out);
+                log_trace "Existing remotes: %s", \@existing_remotes;
+            }
+
+            my $i = -1;
+            for my $remotename (@{ $group->{remotes} }) {
+                my $remote = $config->{remotes}{$remotename};
+                unless ($remote) {
+                    log_error "  Skipped adding remote '$remotename': undefined in config";
+                    next;
+                }
+                $i++;
+                log_debug "  Adding/setting remote $remotename ...";
+
+                my $url = $remote->{url} ? $remote->{url} :
+                    $remote->{url_template} ? _fill_template($remote->{url_template}, $row) : undef;
+                #log_trace "  URL=%s", $url;
+                unless ($url) {
+                    log_error "  Skipped adding remote '$remote': undefined url/url_template";
+                    next;
+                }
+
+                my @remotenames_to_set = ($remotename);
+                unshift @remotenames_to_set, "origin" if $i == 0;
+
+                for my $remotename_to_set (@remotenames_to_set) {
+                    if (grep {$_ eq $remotename_to_set} @existing_remotes) {
+                        log_info "  Setting URL of remote $remotename_to_set to $url";
+                        system "git", "remote", "set-url", $remotename_to_set, $url;
+                        log_error("Can't set url of remote %s: %s", $remotename_to_set, explain_child_error()) if $?;
+                    } else {
+                        log_info "  Adding remote $remotename_to_set: $url";
+                        system "git", "remote", "add", $remotename_to_set, $url;
+                        log_error("Can't add remote %s: %s", $remotename_to_set, explain_child_error()) if $?;
+                    }
+                } # for $remotename_to_set
+            }
+        }
+
+    } # for $groupname
+    [200];
 }
 
 $SPEC{configure_repo} = {
@@ -525,9 +613,9 @@ $SPEC{configure_repo} = {
 sub configure_repo {
     my %args = @_;
     my $config; { my $res = _read_config(%args); return $res unless $res->[0] == 200; $config = $res->[2] }
-    my $rows; { my $res = get_repo_group(%args, config => $config); return $res unless $res->[0] == 200; $rows = $res->[2] }
+    my $rows; { my $res = get_repo_group(%args, config => $config, _always_array=>1); return $res unless $res->[0] == 200; $rows = $res->[2] }
 
-    my @repos;
+    my $envres = envresmulti();
   REPO:
     for my $row (@$rows) {
         log_debug "Processing repo %s (group=%s) ...", $row->{repo0}, $row->{groups};
@@ -535,9 +623,10 @@ sub configure_repo {
             log_debug "  Skipping repo because it does not belong to any group";
             next REPO;
         }
+        my $res = _configure_repo_single($row, $config);
+        $envres->add_result($res->[0], $res->[1], {item_id=>$row->{repo}});
     }
-
-    [200, "OK", \@repos];
+    $envres->as_struct;
 }
 
 1;
