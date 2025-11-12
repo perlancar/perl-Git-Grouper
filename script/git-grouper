@@ -14,14 +14,19 @@ use Perinci::CmdLine::Any;
 Perinci::CmdLine::Any->new(
     url => '/Git/Grouper/',
     subcommands => {
-        "ls-groups" => { url => '/Git/Grouper/ls_groups' },
-        "get-repo-group" => { url => '/Git/Grouper/get_repo_group' },
+        "ls-all-groups" => { url => '/Git/Grouper/ls_all_groups' },
+        "ls-all-remotes" => { url => '/Git/Grouper/ls_all_remotes' },
+
+        "ls-repo-groups" => { url => '/Git/Grouper/ls_repo_groups' },
+        "ls-repo-remotes" => { url => '/Git/Grouper/ls_repo_remotes' },
+
         "filter-repo-has-group" => { url => '/Git/Grouper/filter_repo_has_group' },
         "filter-repo-lacks-group" => { url => '/Git/Grouper/filter_repo_lacks_group' },
         "filter-repo-orphan" => { url => '/Git/Grouper/filter_repo_orphan' },
         "filter-repo-not-orphan" => { url => '/Git/Grouper/filter_repo_not_orphan' },
         "filter-repo-multiple-group" => { url => '/Git/Grouper/filter_repo_multiple_group' },
         "filter-repo-single-group" => { url => '/Git/Grouper/filter_repo_single_group' },
+
         "configure-repo" => { url => '/Git/Grouper/configure_repo' },
     },
     #default_subcommand => 'get-repo-group',
@@ -40,12 +45,18 @@ Perinci::CmdLine::Any->new(
 
 List all defined groups:
 
- % git-grouper ls-groups      ; # just list the names
- % git-grouper ls-groups -l   ; # list names & summaries
+ % git-grouper ls-all-groups      ; # just list the names
+ % git-grouper ls-all-groups -l   ; # list detailed records
 
-Check which group(s) do repositories belong to:
+List all defined remotes:
 
- % git-grouper get-repo-group REPO1 REPO2 ...
+ % git-grouper ls-all-remotes      ; # just list the names
+ % git-grouper ls-all-remotes -l   ; # list detailed records
+
+List which group(s) repositories belong to:
+
+ % git-grouper ls-repo-groups ; # list current working repo's group(s)
+ % git-grouper ls-repo-group REPO1 REPO2 ...
 
 List repositories that belong to specified group(s):
 
@@ -75,12 +86,14 @@ List repositories that belong to just one (instead of multiple) group:
 
  % git-grouper filter-repo-single-group REPO1 REPO2 ...
 
-=head2 Listing remotes
+=head2 Listing repo's remotes according to group's configuration
 
- TODO
+ % git-grouper ls-repo-remotes ; # remotes of current working repo
+ % git-grouper ls-repo-remotes REPO1 REPO2 ...
 
 =head2 Configuring repositories based on group's attributes
 
+ % git-grouper configure-repo ; # configure current working repo
  % git-grouper configure-repo REPO1 REPO2 ...
 
 
@@ -116,15 +129,12 @@ configuration.
 
  [remote "github"]
  url_template = git@github.com:[% github_username %]/[% repo_name %].git
- fetch = +refs/heads/*:refs/remotes/origin/*
 
  [remote "github_company1"]
  url_template = git@github.com+company1:company1/[% repo_name %].git
- fetch = +refs/heads/*:refs/remotes/origin/*
 
  [remote "privbak"]
  url_template = ssh://u1@hostname:/path/to/[% repo_name %].git
- fetch = +refs/heads/*:refs/remotes/gitbak/*
 
  [group "company1"]
  repo_name_pattern = /^company1-/
