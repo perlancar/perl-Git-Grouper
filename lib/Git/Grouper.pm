@@ -34,6 +34,12 @@ our %argspecs_common = (
     },
 );
 
+our %argspecopt_ignore_nondirs = (
+    ignore_nondirs => {
+        schema => 'bool*',
+    },
+);
+
 our %argspecopt_detail = (
     detail => {
         schema => 'bool*',
@@ -183,6 +189,11 @@ sub _get_repos {
     } else {
         push @repos, ".";
     }
+
+    if ($args{ignore_nondirs}) {
+        @repos = grep {(-d $_)} @repos;
+    }
+
     [200, "OK", \@repos];
 }
 
@@ -260,6 +271,7 @@ $SPEC{ls_repo_groups} = {
     args => {
         %argspecs_common,
         %argspec0plus_repo,
+        %argspecopt_ignore_nondirs,
         result_array => {
             summary => 'How to return result',
             schema => ['str*', in=>['auto','always']],
@@ -417,6 +429,7 @@ $SPEC{filter_repo_has_group} = {
         %argspecs_common,
         %argspec0_group_spec,
         %argspec1plus_repo,
+        %argspecopt_ignore_nondirs,
     },
 };
 sub filter_repo_has_group {
@@ -460,6 +473,7 @@ $SPEC{filter_repo_lacks_group} = {
         %argspecs_common,
         %argspec0_group_spec,
         %argspec1plus_repo,
+        %argspecopt_ignore_nondirs,
     },
 };
 sub filter_repo_lacks_group {
@@ -501,6 +515,7 @@ $SPEC{filter_repo_orphan} = {
     args => {
         %argspecs_common,
         %argspec0plus_repo,
+        %argspecopt_ignore_nondirs,
     },
 };
 sub filter_repo_orphan {
@@ -524,6 +539,7 @@ $SPEC{filter_repo_not_orphan} = {
     args => {
         %argspecs_common,
         %argspec0plus_repo,
+        %argspecopt_ignore_nondirs,
     },
 };
 sub filter_repo_not_orphan {
@@ -547,6 +563,7 @@ $SPEC{filter_repo_multiple_group} = {
     args => {
         %argspecs_common,
         %argspec0plus_repo,
+        %argspecopt_ignore_nondirs,
     },
 };
 sub filter_repo_multiple_group {
@@ -570,6 +587,7 @@ $SPEC{filter_repo_single_group} = {
     args => {
         %argspecs_common,
         %argspec0plus_repo,
+        %argspecopt_ignore_nondirs,
     },
 };
 sub filter_repo_single_group {
@@ -687,6 +705,7 @@ $SPEC{ls_repo_remotes} = {
     summary => "List remotes of specified repos based on group configuration",
     args => {
         %argspec0plus_repo,
+        %argspecopt_ignore_nondirs,
         result_array => {
             schema => ['str*', in=>['auto', 'always']],
         },
@@ -729,6 +748,7 @@ $SPEC{configure_repo} = {
     args => {
         %argspecs_common,
         %argspec0plus_repo,
+        %argspecopt_ignore_nondirs,
         clean_remotes => {
             summary => 'Delete all remotes not specified by the group configuration',
             schema => 'bool*',
