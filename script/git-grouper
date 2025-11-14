@@ -77,24 +77,29 @@ List repositories that do not belong to any group:
 List repositories that belong to a group or more:
 
  % git-grouper filter-repo-not-orphan REPO1 REPO2 ...
+ % git-grouper filter-repo-not-orphan --ignore-nondirs *
 
 List repositories that belong to multiple (instead of a single) group:
 
  % git-grouper filter-repo-multiple-group REPO1 REPO2 ...
+ % git-grouper filter-repo-multiple-group --ignore-nondirs *
 
 List repositories that belong to just one (instead of multiple) group:
 
  % git-grouper filter-repo-single-group REPO1 REPO2 ...
+ % git-grouper filter-repo-single-group --ignore-nondirs *
 
 =head2 Listing repo's remotes according to group's configuration
 
  % git-grouper ls-repo-remotes ; # remotes of current working repo
  % git-grouper ls-repo-remotes REPO1 REPO2 ...
+ % git-grouper ls-repo-remotes --ignore-nondirs *
 
 =head2 Configuring repositories based on group's attributes
 
  % git-grouper configure-repo ; # configure current working repo
  % git-grouper configure-repo REPO1 REPO2 ...
+ % git-grouper configure-repo --ignore-nondirs *
 
 
 =head1 DESCRIPTION
