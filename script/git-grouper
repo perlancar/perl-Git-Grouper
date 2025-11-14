@@ -41,38 +41,39 @@ Perinci::CmdLine::Any->new(
 
 =head1 SYNOPSIS
 
-=head2 Listing groups and repositories
+=head2 Listing groups
 
 List all defined groups:
 
  % git-grouper ls-all-groups      ; # just list the names
  % git-grouper ls-all-groups -l   ; # list detailed records
 
-List all defined remotes:
-
- % git-grouper ls-all-remotes      ; # just list the names
- % git-grouper ls-all-remotes -l   ; # list detailed records
-
 List which group(s) repositories belong to:
 
  % git-grouper ls-repo-groups ; # list current working repo's group(s)
- % git-grouper ls-repo-group REPO1 REPO2 ...
+ % git-grouper ls-repo-groups REPO1 REPO2 ...
+ % git-grouper ls-repo-groups REPO1 REPO2 ...
+
+=head2 Listing repositories
 
 List repositories that belong to specified group(s):
 
  % git-grouper filter-repo-has-group GROUP REPO1 REPO2 ...
+ % git-grouper filter-repo-has-group --ignore-nondirs *
  % git-grouper filter-repo-has-group 'GROUP1&GROUP2' REPO1 REPO2 ... ; # repos must belong to all of specified groups
  % git-grouper filter-repo-has-group 'GROUP1|GROUP2' REPO1 REPO2 ... ; # repos must belong to any of specified groups
 
 List repositories that do not belong to specified group(s):
 
  % git-grouper filter-repo-lacks-group GROUP REPO1 REPO2 ...
+ % git-grouper filter-repo-lacks-group --ignore-nondirs *
  % git-grouper filter-repo-lacks-group 'GROUP1&GROUP2' REPO1 REPO2 ... ; # repos must not belong to any of specified groups
  % git-grouper filter-repo-lacks-group 'GROUP1|GROUP2' REPO1 REPO2 ... ; # repos must not belong to just one of specified groups
 
 List repositories that do not belong to any group:
 
  % git-grouper filter-repo-orphan REPO1 REPO2 ...
+ % git-grouper filter-repo-orphan --ignore-nondirs *
 
 List repositories that belong to a group or more:
 
@@ -89,7 +90,14 @@ List repositories that belong to just one (instead of multiple) group:
  % git-grouper filter-repo-single-group REPO1 REPO2 ...
  % git-grouper filter-repo-single-group --ignore-nondirs *
 
-=head2 Listing repo's remotes according to group's configuration
+=head2 Listing repositories
+
+List all defined repositories:
+
+ % git-grouper ls-all-remotes      ; # just list the names
+ % git-grouper ls-all-remotes -l   ; # list detailed records
+
+List repo's remotes according to group's configuration:
 
  % git-grouper ls-repo-remotes ; # remotes of current working repo
  % git-grouper ls-repo-remotes REPO1 REPO2 ...

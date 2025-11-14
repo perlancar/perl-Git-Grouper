@@ -397,6 +397,14 @@ sub ls_repo_groups {
             }
         } # FIND_GROUP
 
+      CHECK_GROUPS: {
+            for my $groupname (@{ $res->{groups} }) {
+                unless ($config->{groups_by_name}{$groupname}) {
+                    return [400, "Repo $repo: Undefined group in configuration: '$groupname"];
+                }
+            }
+        }
+
         push @$payload, $res;
     } # REPO
     #$envres->as_struct;
