@@ -17,6 +17,7 @@ Perinci::CmdLine::Any->new(
         "ls-all-groups" => { url => '/Git/Grouper/ls_all_groups' },
         "ls-all-remotes" => { url => '/Git/Grouper/ls_all_remotes' },
 
+        "groups" => { url => '/Git/Grouper/ls_repo_groups', summary => 'Shortcut for ls-repo-groups (you can use just "g")' },
         "ls-repo-groups" => { url => '/Git/Grouper/ls_repo_groups' },
         "ls-repo-remotes" => { url => '/Git/Grouper/ls_repo_remotes' },
 
