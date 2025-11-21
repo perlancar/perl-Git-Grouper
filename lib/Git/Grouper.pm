@@ -7,7 +7,8 @@ use Log::ger;
 
 use Exporter qw(import);
 use File::chdir;
-use IPC::System::Options -log=>1, qw(system);
+#use IPC::System::Options -log=>1, qw(system);
+use IPC::System::Options qw(system);
 use Proc::ChildError qw(explain_child_error);
 use Perinci::Object qw(envresmulti);
 
@@ -324,11 +325,14 @@ sub ls_repo_groups {
         }
 
         my @repo_groups = map { my $val = $_; $val =~ s/^\.group-//; $val } glob(".group-*");
+        my @repo_exclude_groups = map { my $val = $_; $val =~ s/^\.exclude-group-//; $val } glob(".exclude-group-*");
+        my $exclude_all_other_groups = -f ".exclude-all-other-groups";
 
         my $res = { repo0 => $repo0, repo => $repo, groups => [@repo_groups] };
 
       GROUP:
         for my $group (@{ $config->{groups} }) {
+            next if $exclude_all_other_groups;
             next if grep { $_ eq $group->{group} } @repo_groups;
 
             my $num_filters;
@@ -386,6 +390,13 @@ sub ls_repo_groups {
                 log_trace "  Skipped group %s (repo %s does not lack any tag %s)", $group->{group}, $repo, $group->{lacks_any_tags};
                 next GROUP;
               SATISFY_FILTER_LACKS_ANY_TAGS:
+            }
+
+            # this must be the last filter
+          EXCLUDE_GROUPS:
+            if (grep { $group->{group} eq $_ } @repo_exclude_groups) {
+                log_trace "  Skipped group %s (repo %s has .exclude-group-%s)", $group->{group}, $repo, $group->{group};
+                next GROUP;
             }
 
           MATCH_GROUP:
@@ -647,6 +658,7 @@ sub _configure_repo_single {
             system("git", "config", "set", "user.email", $group->{user_email});
             log_error("Can't set user.email: %s", explain_child_error()) if $?;
         }
+        next;
 
       SET_REMOTES: {
             last unless $group->{remotes};
@@ -769,8 +781,11 @@ sub configure_repo {
     my $rows; { my $res = ls_repo_groups(%args, config => $config, result_array=>'always', groups_array=>'always'); return $res unless $res->[0] == 200; $rows = $res->[2] }
 
     my $envres = envresmulti();
+    my $i = 0;
   REPO:
     for my $row (@$rows) {
+        $i++;
+        last if $i > 1;
         log_info "Configuring repo %s (group=%s) ...", $row->{repo0}, $row->{groups};
         if ($row->{groups} eq '') {
             log_debug "  Skipping repo because it does not belong to any group";
