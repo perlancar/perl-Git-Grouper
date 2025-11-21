@@ -658,7 +658,6 @@ sub _configure_repo_single {
             system("git", "config", "set", "user.email", $group->{user_email});
             log_error("Can't set user.email: %s", explain_child_error()) if $?;
         }
-        next;
 
       SET_REMOTES: {
             last unless $group->{remotes};
