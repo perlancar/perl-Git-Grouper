@@ -784,8 +784,7 @@ sub configure_repo {
   REPO:
     for my $row (@$rows) {
         $i++;
-        last if $i > 1;
-        log_info "Configuring repo %s (group=%s) ...", $row->{repo0}, $row->{groups};
+        log_info "[%d/%d] Configuring repo %s (group=%s) ...", $i, scalar(@$rows), $row->{repo0}, $row->{groups};
         if ($row->{groups} eq '') {
             log_debug "  Skipping repo because it does not belong to any group";
             next REPO;
