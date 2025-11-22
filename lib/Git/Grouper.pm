@@ -588,7 +588,7 @@ $SPEC{filter_repo_multiple_group} = {
 sub filter_repo_multiple_group {
     my %args = @_;
     my $config; { my $res = _read_config(%args); return $res unless $res->[0] == 200; $config = $res->[2] }
-    my $rows; { my $res = ls_repo_groups(%args, config => $config, result_array=>'always'); return $res unless $res->[0] == 200; $rows = $res->[2] }
+    my $rows; { my $res = ls_repo_groups(%args, config => $config, result_array=>'always', groups_array=>'always'); return $res unless $res->[0] == 200; $rows = $res->[2] }
 
     my @repos;
   REPO:
